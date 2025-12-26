@@ -10,6 +10,7 @@ interface Employee {
     store_name: string;
     type: 'incentive' | 'basic';
     base_salary: number;
+    hire_date: string;
     is_active: boolean;
 }
 
@@ -56,6 +57,7 @@ export function EmployeesPage() {
     const [newStoreName, setNewStoreName] = useState('');
     const [newType, setNewType] = useState<'incentive' | 'basic'>('incentive');
     const [newBaseSalary, setNewBaseSalary] = useState(0);
+    const [newHireDate, setNewHireDate] = useState(new Date().toISOString().split('T')[0]);
 
     // Mutations
     const addMutation = useMutation({
@@ -70,7 +72,12 @@ export function EmployeesPage() {
             setNewStoreName('');
             setNewType('incentive');
             setNewBaseSalary(0);
+            setNewHireDate(new Date().toISOString().split('T')[0]);
             document.getElementById('new-name-input')?.focus();
+        },
+        onError: (error: any) => {
+            console.error('Add employee error:', error);
+            alert(`직원 추가 실패: ${error.message || '알 수 없는 오류'}`);
         }
     });
 
@@ -107,6 +114,7 @@ export function EmployeesPage() {
             store_name: newStoreName,
             type: newType,
             base_salary: Number(newBaseSalary),
+            hire_date: newHireDate,
         });
     };
 
@@ -131,6 +139,23 @@ export function EmployeesPage() {
         if (confirm('정말 삭제하시겠습니까?')) {
             deleteMutation.mutate(id);
         }
+    };
+
+    const calculateTenure = (hireDateStr: string) => {
+        if (!hireDateStr) return '-';
+        const hireDate = new Date(hireDateStr);
+        const today = new Date();
+
+        let years = today.getFullYear() - hireDate.getFullYear();
+        let months = today.getMonth() - hireDate.getMonth();
+
+        if (months < 0) {
+            years--;
+            months += 12;
+        }
+
+        if (years === 0 && months === 0) return '1개월 미만';
+        return `${years > 0 ? `${years}년 ` : ''}${months}개월`;
     };
 
     // Helper to render input
@@ -181,11 +206,13 @@ export function EmployeesPage() {
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">이름</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">직급</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">점포명</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">급여 유형</th>
-                                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-40">기본급</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">이름</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">직급</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">점포명</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">입사일자</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">근무연수</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">급여 유형</th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">기본급</th>
                                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">삭제</th>
                             </tr>
                         </thead>
@@ -199,7 +226,7 @@ export function EmployeesPage() {
                                         value={newName}
                                         onChange={(e) => setNewName(e.target.value)}
                                         className="w-full px-2 py-1 border border-blue-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                                        placeholder="이름 입력"
+                                        placeholder="이름"
                                         onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
                                     />
                                 </td>
@@ -224,8 +251,19 @@ export function EmployeesPage() {
                                         value={newStoreName}
                                         onChange={(e) => setNewStoreName(e.target.value)}
                                         className="w-full px-2 py-1 border border-blue-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                                        placeholder="점포 선택"
+                                        placeholder="점포"
                                     />
+                                </td>
+                                <td className="px-4 py-3">
+                                    <input
+                                        type="date"
+                                        value={newHireDate}
+                                        onChange={(e) => setNewHireDate(e.target.value)}
+                                        className="w-full px-2 py-1 border border-blue-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-500">
+                                    -
                                 </td>
                                 <td className="px-4 py-3">
                                     <select
@@ -233,8 +271,8 @@ export function EmployeesPage() {
                                         onChange={(e) => setNewType(e.target.value as 'incentive' | 'basic')}
                                         className="w-full px-2 py-1 border border-blue-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
                                     >
-                                        <option value="incentive">인센티브 대상</option>
-                                        <option value="basic">기본급 전용</option>
+                                        <option value="incentive">인센티브</option>
+                                        <option value="basic">기본급</option>
                                     </select>
                                 </td>
                                 <td className="px-4 py-3">
@@ -280,10 +318,12 @@ export function EmployeesPage() {
                                                 ])}
                                             </td>
                                             <td className="px-4 py-3">{renderInput('store_name', 'text', 'store-list')}</td>
+                                            <td className="px-4 py-3">{renderInput('hire_date', 'date')}</td>
+                                            <td className="px-4 py-3 text-sm text-gray-500">{calculateTenure(editForm.hire_date || employee.hire_date)}</td>
                                             <td className="px-4 py-3">
                                                 {renderSelect('type', [
-                                                    { value: 'incentive', label: '인센티브 대상' },
-                                                    { value: 'basic', label: '기본급 전용' }
+                                                    { value: 'incentive', label: '인센티브' },
+                                                    { value: 'basic', label: '기본급' }
                                                 ])}
                                             </td>
                                             <td className="px-4 py-3">{renderInput('base_salary', 'number')}</td>
@@ -299,6 +339,8 @@ export function EmployeesPage() {
                                             <td className="px-4 py-3 text-sm font-medium text-gray-900 cursor-pointer" onClick={() => startEditing(employee, 'name')}>{employee.name}</td>
                                             <td className="px-4 py-3 text-sm text-gray-500 cursor-pointer" onClick={() => startEditing(employee, 'position')}>{employee.position}</td>
                                             <td className="px-4 py-3 text-sm text-gray-500 cursor-pointer" onClick={() => startEditing(employee, 'store_name')}>{employee.store_name}</td>
+                                            <td className="px-4 py-3 text-sm text-gray-500 cursor-pointer" onClick={() => startEditing(employee, 'hire_date')}>{employee.hire_date}</td>
+                                            <td className="px-4 py-3 text-sm text-blue-600 font-medium">{calculateTenure(employee.hire_date)}</td>
                                             <td className="px-4 py-3 text-sm cursor-pointer" onClick={() => startEditing(employee, 'type')}>
                                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${employee.type === 'incentive' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
                                                     {employee.type === 'incentive' ? '인센티브' : '기본급'}
@@ -317,7 +359,7 @@ export function EmployeesPage() {
 
                             {employees?.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
                                         등록된 직원이 없습니다. 위 입력란을 통해 추가해주세요.
                                     </td>
                                 </tr>
