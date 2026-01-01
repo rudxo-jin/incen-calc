@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { Trash2, Plus, Settings } from 'lucide-react';
-import { SalarySettingsModal } from '../components/SalarySettingsModal';
+import { Trash2, Plus, UserCog } from 'lucide-react';
+import { EmployeeDetailModal } from '../components/EmployeeDetailModal';
 
 interface Employee {
     id: number;
@@ -22,12 +22,6 @@ export function EmployeesPage() {
     const { data: employees } = useQuery({
         queryKey: ['employees'],
         queryFn: async () => {
-            // We need to fetch base_salary from the new settings table ideally, 
-            // but for now let's stick to the employees table for the list view 
-            // and rely on the modal for details.
-            // However, we migrated base_salary to settings. 
-            // Let's fetch employees and we can fetch their base salary via a join or just show a "Settings" button.
-            // For simplicity in this view, let's just show the "Settings" button.
             const { data, error } = await supabase
                 .from('employees')
                 .select('*')
@@ -53,13 +47,8 @@ export function EmployeesPage() {
     // Parse stores from JSONB
     const stores: string[] = settings?.stores ? (typeof settings.stores === 'string' ? JSON.parse(settings.stores) : settings.stores) : [];
 
-    // Inline Editing State
-    const [editingId, setEditingId] = useState<number | null>(null);
-    const [editForm, setEditForm] = useState<Partial<Employee>>({});
-    const [focusedField, setFocusedField] = useState<string | null>(null);
-
     // Modal State
-    const [salaryModalEmployee, setSalaryModalEmployee] = useState<{ id: number, name: string } | null>(null);
+    const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(null);
 
     // New Employee State
     const [newName, setNewName] = useState('');
@@ -73,10 +62,6 @@ export function EmployeesPage() {
         mutationFn: async (newEmployee: Omit<Employee, 'id' | 'is_active' | 'base_salary'>) => {
             const { data, error } = await supabase.from('employees').insert([newEmployee]).select().single();
             if (error) throw error;
-
-            // Also initialize default salary settings for the new employee
-            // This is handled by the modal later, or we can trigger a default insert here.
-            // For now, let's just create the employee.
             return data;
         },
         onSuccess: () => {
@@ -91,19 +76,6 @@ export function EmployeesPage() {
         onError: (error: any) => {
             console.error('Add employee error:', error);
             alert(`직원 추가 실패: ${error.message || '알 수 없는 오류'}`);
-        }
-    });
-
-    const updateMutation = useMutation({
-        mutationFn: async ({ id, updates }: { id: number; updates: Partial<Employee> }) => {
-            const { error } = await supabase.from('employees').update(updates).eq('id', id);
-            if (error) throw error;
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['employees'] });
-            setEditingId(null);
-            setEditForm({});
-            setFocusedField(null);
         }
     });
 
@@ -127,28 +99,11 @@ export function EmployeesPage() {
             store_name: newStoreName,
             type: newType,
             hire_date: newHireDate,
-            base_salary: 0, // Default, will be set in settings
         });
     };
 
-    const startEditing = (employee: Employee, field: string) => {
-        if (editingId === employee.id) return;
-        setEditingId(employee.id);
-        setEditForm({ ...employee });
-        setFocusedField(field);
-    };
-
-    const saveEditing = async () => {
-        if (!editingId || !editForm) return;
-        updateMutation.mutate({ id: editingId, updates: editForm });
-    };
-
-    const handleRowBlur = (e: React.FocusEvent<HTMLTableRowElement>) => {
-        if (e.currentTarget.contains(e.relatedTarget)) return;
-        saveEditing();
-    };
-
-    const handleDelete = (id: number) => {
+    const handleDelete = (id: number, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent row click
         if (confirm('정말 삭제하시겠습니까?')) {
             deleteMutation.mutate(id);
         }
@@ -171,43 +126,6 @@ export function EmployeesPage() {
         return `${years > 0 ? `${years}년 ` : ''}${months}개월`;
     };
 
-    // Helper to render input
-    const renderInput = (field: keyof Employee, type: string = 'text', list?: string) => {
-        const isFocused = focusedField === field;
-        return (
-            <input
-                type={type}
-                list={list}
-                value={editForm[field] as string | number || ''}
-                onChange={(e) => setEditForm({ ...editForm, [field]: e.target.value })}
-                className="w-full px-2 py-1 border border-blue-500 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                autoFocus={isFocused}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter') e.currentTarget.blur();
-                }}
-            />
-        );
-    };
-
-    const renderSelect = (field: keyof Employee, options: { value: string, label: string }[]) => {
-        const isFocused = focusedField === field;
-        return (
-            <select
-                value={editForm[field] as string}
-                onChange={(e) => setEditForm({ ...editForm, [field]: e.target.value })}
-                className="w-full px-2 py-1 border border-blue-500 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                autoFocus={isFocused}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter') e.currentTarget.blur();
-                }}
-            >
-                {options.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-            </select>
-        );
-    };
-
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -225,7 +143,7 @@ export function EmployeesPage() {
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">입사일자</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">근무연수</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">급여 유형</th>
-                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">급여 설정</th>
+                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">관리</th>
                                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16">삭제</th>
                             </tr>
                         </thead>
@@ -289,7 +207,7 @@ export function EmployeesPage() {
                                     </select>
                                 </td>
                                 <td className="px-4 py-3 text-center text-sm text-gray-400">
-                                    (생성 후 설정)
+                                    (생성 후 관리)
                                 </td>
                                 <td className="px-4 py-3 text-center">
                                     <button
@@ -306,74 +224,31 @@ export function EmployeesPage() {
                             {employees?.map((employee) => (
                                 <tr
                                     key={employee.id}
-                                    className={`hover:bg-gray-50 ${editingId === employee.id ? 'bg-blue-50' : ''}`}
-                                    onBlur={editingId === employee.id ? handleRowBlur : undefined}
+                                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                                    onClick={() => setSelectedEmployeeId(employee.id)}
                                 >
-                                    {editingId === employee.id ? (
-                                        // Editing Mode
-                                        <>
-                                            <td className="px-4 py-3">{renderInput('name')}</td>
-                                            <td className="px-4 py-3">
-                                                {renderSelect('position', [
-                                                    { value: '공장장', label: '공장장' },
-                                                    { value: '팀장', label: '팀장' },
-                                                    { value: '선임기사', label: '선임기사' },
-                                                    { value: '기사', label: '기사' },
-                                                    { value: '수습', label: '수습' },
-                                                    { value: '기타', label: '기타' }
-                                                ])}
-                                            </td>
-                                            <td className="px-4 py-3">{renderInput('store_name', 'text', 'store-list')}</td>
-                                            <td className="px-4 py-3">{renderInput('hire_date', 'date')}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-500">{calculateTenure(editForm.hire_date || employee.hire_date)}</td>
-                                            <td className="px-4 py-3">
-                                                {renderSelect('type', [
-                                                    { value: 'incentive', label: '인센티브' },
-                                                    { value: 'basic', label: '기본급' }
-                                                ])}
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <button
-                                                    onClick={() => setSalaryModalEmployee({ id: employee.id, name: employee.name })}
-                                                    className="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm font-medium flex items-center justify-center mx-auto"
-                                                >
-                                                    <Settings size={14} className="mr-1" /> 설정
-                                                </button>
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <button onClick={() => handleDelete(employee.id)} className="text-gray-400 hover:text-red-600" tabIndex={-1}>
-                                                    <Trash2 size={18} />
-                                                </button>
-                                            </td>
-                                        </>
-                                    ) : (
-                                        // View Mode
-                                        <>
-                                            <td className="px-4 py-3 text-sm font-medium text-gray-900 cursor-pointer" onClick={() => startEditing(employee, 'name')}>{employee.name}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-500 cursor-pointer" onClick={() => startEditing(employee, 'position')}>{employee.position}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-500 cursor-pointer" onClick={() => startEditing(employee, 'store_name')}>{employee.store_name}</td>
-                                            <td className="px-4 py-3 text-sm text-gray-500 cursor-pointer" onClick={() => startEditing(employee, 'hire_date')}>{employee.hire_date}</td>
-                                            <td className="px-4 py-3 text-sm text-blue-600 font-medium">{calculateTenure(employee.hire_date)}</td>
-                                            <td className="px-4 py-3 text-sm cursor-pointer" onClick={() => startEditing(employee, 'type')}>
-                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${employee.type === 'incentive' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
-                                                    {employee.type === 'incentive' ? '인센티브' : '기본급'}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <button
-                                                    onClick={() => setSalaryModalEmployee({ id: employee.id, name: employee.name })}
-                                                    className="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm font-medium flex items-center justify-center mx-auto"
-                                                >
-                                                    <Settings size={14} className="mr-1" /> 설정
-                                                </button>
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <button onClick={() => handleDelete(employee.id)} className="text-gray-400 hover:text-red-600">
-                                                    <Trash2 size={18} />
-                                                </button>
-                                            </td>
-                                        </>
-                                    )}
+                                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{employee.name}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-500">{employee.position}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-500">{employee.store_name}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-500">{employee.hire_date}</td>
+                                    <td className="px-4 py-3 text-sm text-blue-600 font-medium">{calculateTenure(employee.hire_date)}</td>
+                                    <td className="px-4 py-3 text-sm">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${employee.type === 'incentive' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+                                            {employee.type === 'incentive' ? '인센티브' : '기본급'}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                        <button
+                                            className="px-3 py-1 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 text-sm font-medium flex items-center justify-center mx-auto"
+                                        >
+                                            <UserCog size={16} className="mr-1" /> 관리
+                                        </button>
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                        <button onClick={(e) => handleDelete(employee.id, e)} className="text-gray-400 hover:text-red-600">
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
 
@@ -395,11 +270,10 @@ export function EmployeesPage() {
                 ))}
             </datalist>
 
-            {salaryModalEmployee && (
-                <SalarySettingsModal
-                    employeeId={salaryModalEmployee.id}
-                    employeeName={salaryModalEmployee.name}
-                    onClose={() => setSalaryModalEmployee(null)}
+            {selectedEmployeeId && (
+                <EmployeeDetailModal
+                    employeeId={selectedEmployeeId}
+                    onClose={() => setSelectedEmployeeId(null)}
                 />
             )}
         </div>

@@ -12,6 +12,7 @@ export function Layout() {
         { path: '/history', label: '히스토리', icon: History },
         { path: '/statistics', label: '통계', icon: BarChart3 },
         { path: '/employees', label: '직원 관리', icon: Users },
+        { path: '/salary-components', label: '수당/공제 관리', icon: BarChart3 }, // Using BarChart3 temporarily or another icon
         { path: '/settings', label: '설정', icon: Settings },
     ];
 

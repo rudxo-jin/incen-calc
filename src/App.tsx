@@ -9,6 +9,7 @@ import { EmployeesPage } from './pages/EmployeesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StatisticsPage } from './pages/StatisticsPage';
 import { LoginPage } from './pages/LoginPage';
+import { SalaryComponentsPage } from './pages/SalaryComponentsPage';
 
 const queryClient = new QueryClient();
 
@@ -45,6 +46,7 @@ function App() {
             <Route index element={<Navigate to="/calculator" replace />} />
             <Route path="calculator" element={<CalculatorPage />} />
             <Route path="employees" element={<EmployeesPage />} />
+            <Route path="salary-components" element={<SalaryComponentsPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="statistics" element={<StatisticsPage />} />
