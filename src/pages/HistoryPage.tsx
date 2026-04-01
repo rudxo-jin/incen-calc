@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { ChevronDown, ChevronUp, Trash2, FileText, Edit2, Save, X, ArrowDown, ArrowUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Trash2, FileText, Edit2, Save, X, ArrowDown, ArrowUp, Download } from 'lucide-react';
 import { calculateIncentive, DEFAULT_THRESHOLDS } from '../utils/calculator';
+import * as XLSX from 'xlsx';
 
 interface MonthlyRecord {
     id: number;
@@ -356,6 +357,73 @@ export function HistoryPage() {
         return processed;
     })();
 
+    const handleExportExcel = (record: MonthlyRecord) => {
+        const thresholds = { ...DEFAULT_THRESHOLDS, ...(settings?.thresholds || {}) };
+
+        const exportData = processedDetails.map((detail, index) => {
+            const calcData = {
+                name: detail.employee_name,
+                position: detail.position,
+                category: detail.category || '택시',
+                netSales: detail.net_sales,
+                additionalSales: detail.additional_sales,
+                profitMargin: detail.profit_margin,
+                forcedCol: detail.application_rate
+            };
+            const result = calculateIncentive(calcData, undefined, thresholds);
+
+            const row: any = {
+                'No.': index + 1,
+                '이름': detail.employee_name,
+                '직급': detail.position,
+                '부서': detail.store_name || '-',
+                '카테고리': detail.category || '택시',
+                '적용률': detail.display_col || result.col,
+                '매익율(%)': detail.profit_margin,
+                '순매출': detail.net_sales,
+                '추가매출': detail.additional_sales || 0,
+                '매출 인센티브': detail.incentive_amount,
+            };
+
+            additionalIncentiveTypes?.forEach(type => {
+                row[type.name] = detail.extra_incentives?.[type.name] || 0;
+            });
+
+            const totalExtra = Object.values(detail.extra_incentives || {}).reduce((sum, val) => sum + (Number(val) || 0), 0);
+            row['최종 인센티브'] = detail.incentive_amount + totalExtra;
+            row['달성 단계'] = result.level > 0 ? `${result.level}단계` : '미달성';
+
+            for (let i = 1; i <= 3; i++) {
+                const breakdownStep = result.breakdown.find(b => b.level === i);
+                if (breakdownStep) {
+                    row[`${i}단계 적용매출`] = breakdownStep.salesAmount;
+                    row[`${i}단계 요율(%)`] = (breakdownStep.rate * 100).toFixed(1);
+                    row[`${i}단계 인센티브 금액`] = breakdownStep.incentiveAmount;
+                } else {
+                    row[`${i}단계 적용매출`] = '-';
+                    row[`${i}단계 요율(%)`] = '-';
+                    row[`${i}단계 인센티브 금액`] = '-';
+                }
+            }
+            return row;
+        });
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        ws['!cols'] = [
+            { wch: 5 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 10 },
+            { wch: 8 }, { wch: 8 }, { wch: 15 }, { wch: 12 }, { wch: 15 },
+            ...(additionalIncentiveTypes?.map(() => ({ wch: 12 })) || []),
+            { wch: 15 }, { wch: 10 },
+            { wch: 15 }, { wch: 12 }, { wch: 15 },
+            { wch: 15 }, { wch: 12 }, { wch: 15 },
+            { wch: 15 }, { wch: 12 }, { wch: 15 },
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `${record.year}년 ${record.month}월`);
+        XLSX.writeFile(wb, `인센티브_정산내역_${record.year}년_${record.month}월.xlsx`);
+    };
+
     if (isLoading) return <div className="p-8 text-center">로딩 중...</div>;
 
     return (
@@ -457,12 +525,20 @@ export function HistoryPage() {
                                                 </button>
                                             </>
                                         ) : (
-                                            <button
-                                                onClick={() => setIsEditing(true)}
-                                                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1 text-sm shadow-sm"
-                                            >
-                                                <Edit2 size={16} /> 수정
-                                            </button>
+                                            <>
+                                                <button
+                                                    onClick={() => handleExportExcel(record)}
+                                                    className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1 text-sm shadow-sm"
+                                                >
+                                                    <Download size={16} /> 엑셀 다운로드
+                                                </button>
+                                                <button
+                                                    onClick={() => setIsEditing(true)}
+                                                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1 text-sm shadow-sm"
+                                                >
+                                                    <Edit2 size={16} /> 수정
+                                                </button>
+                                            </>
                                         )}
                                     </div>
                                 </div>
